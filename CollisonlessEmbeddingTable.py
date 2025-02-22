@@ -49,3 +49,28 @@ class CuckooHashTable:
                     self.frequencyCount[key] += 1
                     return embedding
         return None
+
+    def _rebuild(self):
+        oldTables = self.hashTables
+        self.hashTables = [{}, {}]
+
+        for table in oldTables:
+            for _, (key, embedding) in table.items():
+                self.insert(key, embedding)
+
+    def cleanExpiredFeatures(self, maxAge: float):
+        currentTime = time.Time()
+        expiredKeys = []
+
+        for key, lastAccess in self.lastAccessTime.items():
+            if currentTime - lastAccess > maxAge:
+                expiredKeys.append(key)
+
+        for key in expiredKeys:
+            self.remove(key)
+
+    def filterByFrequency(self, minFrequency: int):
+        infrequentKeys = [
+            k for k, v in self.frequencyCount.items() if v < minFrequency]
+        for key in infrequentKeys:
+            self.remove(key)
