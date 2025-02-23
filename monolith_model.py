@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from typing import List, Optional
+from typing import Dict, List, Optional
 from embedding_table import CuckooHashTable
 from model_layer import DeepFMLayer
 
@@ -70,6 +70,7 @@ class MonolithModel:
         if self.model is None:
             self.initialize_model(feature_ids.shape[1])
 
+        self.model.train()  # Set to training mode
         predictions = self.model(feature_ids, feature_values)
         loss = nn.BCELoss()(predictions, labels)
 
@@ -84,5 +85,11 @@ class MonolithModel:
         if self.model is None:
             raise ValueError("Model not initialized. Call train_step first.")
 
-        with torch.no_grad():
-            return self.model(feature_ids, feature_values)
+        if feature_ids.size(0) == 1:
+            # Single item prediction
+            return self.model.predict_single(feature_ids, feature_values)
+        else:
+            # Batch prediction
+            self.model.eval()
+            with torch.no_grad():
+                return self.model(feature_ids, feature_values)
