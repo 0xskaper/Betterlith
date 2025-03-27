@@ -1,4 +1,3 @@
-# Method removed since we've incorporated it directly in set_mapping# Add necessary imports
 import numpy as np
 import pandas as pd
 import torch
@@ -52,8 +51,8 @@ class HNSWIndex:
         # Initialize the HNSW index with improved parameters for better accuracy
         self.index.init_index(
             max_elements=num_items,  # Maximum capacity (matches dataset size)
-            ef_construction=500,     # Increased for better index quality
-            M=64,                    # Increased for better connectivity and recall
+            ef_construction=500,  # Increased for better index quality
+            M=64,  # Increased for better connectivity and recall
         )
 
         # Add items to the index
@@ -126,7 +125,9 @@ class CollisionlessEmbeddingTable:
                 self.embedding_dict[feature_id] = (embedding, current_time)
             else:
                 # Better initialization for embeddings using Xavier/Glorot
-                embedding = torch.randn(self.embedding_dim) * np.sqrt(2.0 / (self.embedding_dim))
+                embedding = torch.randn(self.embedding_dim) * np.sqrt(
+                    2.0 / (self.embedding_dim)
+                )
                 self.embedding_dict[feature_id] = (embedding, current_time)
 
             embeddings.append(embedding)
@@ -174,7 +175,9 @@ class DeepFM(nn.Module):
     Implementation of DeepFM model for recommendation.
     """
 
-    def __init__(self, field_dims, embedding_dim=32, mlp_dims=(128, 64, 32), dropout=0.3):
+    def __init__(
+        self, field_dims, embedding_dim=32, mlp_dims=(128, 64, 32), dropout=0.3
+    ):
         """
         Parameters:
         - field_dims: A list of field dimensions (number of features in each field)
@@ -207,7 +210,9 @@ class DeepFM(nn.Module):
         for i, dim in enumerate(mlp_dims):
             self.mlp.add_module(f"linear_{i}", nn.Linear(input_dim, dim))
             self.mlp.add_module(f"batchnorm_{i}", nn.BatchNorm1d(dim))
-            self.mlp.add_module(f"leakyrelu_{i}", nn.LeakyReLU(0.1))  # Changed to LeakyReLU
+            self.mlp.add_module(
+                f"leakyrelu_{i}", nn.LeakyReLU(0.1)
+            )  # Changed to LeakyReLU
             self.mlp.add_module(f"dropout_{i}", nn.Dropout(p=dropout))
             input_dim = dim
 
@@ -251,6 +256,7 @@ class DeepFM(nn.Module):
 
 # ========================= Data Loading and Processing Functions ===========================
 
+
 def load_movielens_data(data_dir, sample_size=None):
     """
     Load MovieLens dataset from CSV files with option to sample
@@ -265,16 +271,16 @@ def load_movielens_data(data_dir, sample_size=None):
     ratings_file = os.path.join(data_dir, "ratings.csv")
     if not os.path.exists(ratings_file):
         raise FileNotFoundError(f"Ratings file not found: {ratings_file}")
-    
+
     if sample_size:
         # Use pandas to read a random sample of the ratings
         print(f"Loading a sample of {sample_size} ratings...")
         np.random.seed(42)
-        
+
         # Count lines to determine sampling ratio
         with open(ratings_file, "r") as f:
             total_lines = sum(1 for _ in f) - 1  # Subtract header
-        
+
         sample_ratio = min(1.0, sample_size / total_lines)
         ratings_df = pd.read_csv(
             ratings_file, skiprows=lambda x: x > 0 and np.random.random() > sample_ratio
@@ -283,106 +289,115 @@ def load_movielens_data(data_dir, sample_size=None):
         # Load the entire dataset
         print("Loading full ratings dataset...")
         ratings_df = pd.read_csv(ratings_file)
-    
+
     print(f"Loaded {len(ratings_df)} ratings for {len(movies_df)} movies")
-    
+
     # Convert ratings to binary labels (typically >= 3.5 is considered positive)
-    ratings_df['label'] = (ratings_df['rating'] >= 3.5).astype(int)
-    
+    ratings_df["label"] = (ratings_df["rating"] >= 3.5).astype(int)
+
     return ratings_df, movies_df
 
 
-def prepare_coldstart_evaluation(ratings_df, coldstart_ratio=0.2, initial_ratings=5, rating_threshold=3.5, test_ratio=0.2):
+def prepare_coldstart_evaluation(
+    ratings_df,
+    coldstart_ratio=0.2,
+    initial_ratings=5,
+    rating_threshold=3.5,
+    test_ratio=0.2,
+):
     """
     Prepare data for cold-start evaluation with improved relevant item selection
-    
+
     Args:
         ratings_df: DataFrame with ratings
         coldstart_ratio: Ratio of users to treat as cold-start users (reduced)
         initial_ratings: Number of initial ratings for cold-start users (increased)
         rating_threshold: Threshold to consider a rating as positive (increased)
         test_ratio: Ratio of data to use for testing (default 0.2 for 80/20 split)
-        
+
     Returns:
         Dictionary with train and test data for cold-start evaluation
     """
     print("Preparing cold-start evaluation data...")
-    
+
     # Only consider users with sufficient ratings for cold-start evaluation
     # (need some for training and some for testing)
-    user_counts = ratings_df['userId'].value_counts()
+    user_counts = ratings_df["userId"].value_counts()
     # Increased minimum rating count to ensure better user representation
     qualifying_users = user_counts[user_counts >= 15].index.tolist()
-    
+
     print(f"Found {len(qualifying_users)} users with at least 15 ratings")
-    
+
     # 1. Select cold-start users from qualifying users
     np.random.seed(42)
     cold_start_users = np.random.choice(
-        qualifying_users, size=min(int(len(qualifying_users) * coldstart_ratio), len(qualifying_users)), 
-        replace=False
+        qualifying_users,
+        size=min(int(len(qualifying_users) * coldstart_ratio), len(qualifying_users)),
+        replace=False,
     )
     print(f"Selected {len(cold_start_users)} users as cold-start users")
-    
+
     # 2. Split data randomly into 80% train and 20% test
     np.random.seed(42)  # Ensure reproducibility
-    
+
     # Create train/test split indices
     all_indices = np.arange(len(ratings_df))
     test_indices = np.random.choice(
-        all_indices, 
-        size=int(len(ratings_df) * test_ratio), 
-        replace=False
+        all_indices, size=int(len(ratings_df) * test_ratio), replace=False
     )
     train_indices = np.setdiff1d(all_indices, test_indices)
-    
+
     # Split the dataframe
     train_full = ratings_df.iloc[train_indices]
     test_data = ratings_df.iloc[test_indices]
-    
-    print(f"Split data into {len(train_full)} training samples and {len(test_data)} test samples")
-    
+
+    print(
+        f"Split data into {len(train_full)} training samples and {len(test_data)} test samples"
+    )
+
     # 3. Separate regular and cold-start users in training data
-    train_regular = train_full[~train_full['userId'].isin(cold_start_users)]
-    cold_users_train = train_full[train_full['userId'].isin(cold_start_users)]
-    
+    train_regular = train_full[~train_full["userId"].isin(cold_start_users)]
+    cold_users_train = train_full[train_full["userId"].isin(cold_start_users)]
+
     # 4. For cold-start users, select initial ratings more strategically
     initial_data = []
     for user in cold_start_users:
-        user_ratings = cold_users_train[cold_users_train['userId'] == user]
+        user_ratings = cold_users_train[cold_users_train["userId"] == user]
         if len(user_ratings) > 0:
             # Prioritize higher rated items to get a clearer signal of user preferences
-            user_ratings = user_ratings.sort_values('rating', ascending=False)
-                
+            user_ratings = user_ratings.sort_values("rating", ascending=False)
+
             n_initial = min(initial_ratings, len(user_ratings))
             initial_data.append(user_ratings.iloc[:n_initial])
-    
+
     # Combine regular user data and cold-start user initial data
     initial_data_df = pd.concat(initial_data) if initial_data else pd.DataFrame()
     train_data = pd.concat([train_regular, initial_data_df])
-    
+
     # Get cold-start test data
-    cold_start_test = test_data[test_data['userId'].isin(cold_start_users)]
-    
+    cold_start_test = test_data[test_data["userId"].isin(cold_start_users)]
+
     # Create binary label for test data
-    test_data['label'] = (test_data['rating'] >= rating_threshold).astype(int)
-    cold_start_test['label'] = (cold_start_test['rating'] >= rating_threshold).astype(int)
-    
+    test_data["label"] = (test_data["rating"] >= rating_threshold).astype(int)
+    cold_start_test["label"] = (cold_start_test["rating"] >= rating_threshold).astype(
+        int
+    )
+
     # Add positive interactions count for debugging
-    pos_interactions = cold_start_test[cold_start_test['label'] == 1]
-    users_with_pos = pos_interactions['userId'].nunique()
-    
+    pos_interactions = cold_start_test[cold_start_test["label"] == 1]
+    users_with_pos = pos_interactions["userId"].nunique()
+
     print(f"Training data: {len(train_data)} ratings")
     print(f"Cold-start users initial data: {len(initial_data_df)} ratings")
     print(f"Cold-start users test data: {len(cold_start_test)} ratings")
     print(f"Cold-start users with positive test interactions: {users_with_pos}")
     print(f"Number of positive test interactions: {len(pos_interactions)}")
-    
+
     return {
-        'train_data': train_data,
-        'cold_start_test': cold_start_test,
-        'full_test': test_data,
-        'cold_start_users': cold_start_users
+        "train_data": train_data,
+        "cold_start_test": cold_start_test,
+        "full_test": test_data,
+        "cold_start_users": cold_start_users,
     }
 
 
@@ -408,7 +423,7 @@ def preprocess_for_recommendation(train_df, binary_threshold=3.5):
     train_df["movie_idx"] = train_df["movieId"].map(movie_id_map)
 
     # Check if binary label already exists
-    if 'label' not in train_df.columns:
+    if "label" not in train_df.columns:
         # Convert ratings to binary labels if using binary model
         if binary_threshold is not None:
             train_df["label"] = (train_df["rating"] >= binary_threshold).astype(int)
@@ -450,28 +465,28 @@ def preprocess_test_data(test_df, user_id_map, movie_id_map):
     # Filter users and items that are in the training set
     test_df = test_df[test_df["userId"].isin(user_id_map.keys())]
     test_df = test_df[test_df["movieId"].isin(movie_id_map.keys())]
-    
+
     # Map to internal indices
     test_df["user_idx"] = test_df["userId"].map(user_id_map)
     test_df["movie_idx"] = test_df["movieId"].map(movie_id_map)
-    
+
     # Prepare tensors
     user_ids = torch.tensor(test_df["user_idx"].values)
     movie_ids = torch.tensor(test_df["movie_idx"].values)
-    
+
     # Check if binary label already exists
-    if 'label' not in test_df.columns:
+    if "label" not in test_df.columns:
         test_df["label"] = (test_df["rating"] >= 3.5).astype(int)
-    
+
     labels = torch.tensor(test_df["label"].values)
-    
+
     print(f"Test data contains {len(test_df)} valid interactions after filtering")
-    
+
     return {
         "user_ids": user_ids,
         "movie_ids": movie_ids,
         "labels": labels,
-        "ratings_df": test_df
+        "ratings_df": test_df,
     }
 
 
@@ -480,7 +495,9 @@ class MovieLensRecommendationSystem:
     A recommendation system for MovieLens data based on DeepFM model
     """
 
-    def __init__(self, num_users, num_items, embedding_dim=32):  # Increased embedding dim
+    def __init__(
+        self, num_users, num_items, embedding_dim=32
+    ):  # Increased embedding dim
         self.num_users = num_users
         self.num_items = num_items
         self.embedding_dim = embedding_dim
@@ -494,19 +511,19 @@ class MovieLensRecommendationSystem:
             f"Initializing DeepFM model with {num_users} users and {num_items} items..."
         )
         self.model = DeepFM(
-            field_dims=[num_users, num_items], 
+            field_dims=[num_users, num_items],
             embedding_dim=embedding_dim,
             mlp_dims=(128, 64, 32),  # Wider network
-            dropout=0.3  # Increased dropout for better generalization
+            dropout=0.3,  # Increased dropout for better generalization
         )
-        
+
         # Use Adam optimizer with weight decay and better learning rate
         self.optimizer = torch.optim.Adam(
-            self.model.parameters(), 
+            self.model.parameters(),
             lr=0.001,
-            weight_decay=1e-5  # Added weight decay for regularization
+            weight_decay=1e-5,  # Added weight decay for regularization
         )
-        
+
         # Use weighted BCE loss to handle class imbalance
         self.criterion = nn.BCELoss()
 
@@ -518,17 +535,19 @@ class MovieLensRecommendationSystem:
 
         # ANN index (initialized when needed)
         self.ann_index = None
-        
+
         # For learning rate scheduling
         self.scheduler = None
-        
+
         # Item popularity storage
         self.item_popularity = None
 
-    def set_mapping(self, reverse_user_map, reverse_movie_map, movies_df=None, ratings_df=None):
+    def set_mapping(
+        self, reverse_user_map, reverse_movie_map, movies_df=None, ratings_df=None
+    ):
         """
         Set mappings to convert between internal and original IDs
-        
+
         Args:
             reverse_user_map: Mapping from internal to original user IDs
             reverse_movie_map: Mapping from internal to original movie IDs
@@ -539,52 +558,73 @@ class MovieLensRecommendationSystem:
         self.reverse_movie_map = reverse_movie_map
         self.movies_df = movies_df
         self.ratings_df = ratings_df
-        
+
         # Calculate item popularity directly here instead of calling a separate method
         if ratings_df is not None:
             print("Calculating item popularity...")
-            
+
             # If we don't have movie_idx, assume we're using the original ratings_df
-            if 'movie_idx' not in ratings_df.columns and 'movieId' in ratings_df.columns:
+            if (
+                "movie_idx" not in ratings_df.columns
+                and "movieId" in ratings_df.columns
+            ):
                 # Map movieId to internal IDs
-                if hasattr(self, 'reverse_movie_map'):
+                if hasattr(self, "reverse_movie_map"):
                     # Create a mapping from original ID to internal ID
                     movie_id_map = {v: k for k, v in self.reverse_movie_map.items()}
-                    if 'userId' in ratings_df.columns:
+                    if "userId" in ratings_df.columns:
                         # Filter to only include known movies
-                        ratings_with_map = ratings_df[ratings_df['movieId'].isin(movie_id_map.keys())]
+                        ratings_with_map = ratings_df[
+                            ratings_df["movieId"].isin(movie_id_map.keys())
+                        ]
                         # Add item_idx column
-                        ratings_with_map = ratings_with_map.copy()  # Avoid SettingWithCopyWarning
-                        ratings_with_map['movie_idx'] = ratings_with_map['movieId'].map(movie_id_map)
-                        
+                        ratings_with_map = (
+                            ratings_with_map.copy()
+                        )  # Avoid SettingWithCopyWarning
+                        ratings_with_map["movie_idx"] = ratings_with_map["movieId"].map(
+                            movie_id_map
+                        )
+
                         # Calculate popularity
                         if len(ratings_with_map) > 0:
                             # Count occurrences of each movie
-                            item_counts = ratings_with_map['movie_idx'].value_counts().reset_index()
-                            item_counts.columns = ['movie_idx', 'count']
-                            
+                            item_counts = (
+                                ratings_with_map["movie_idx"]
+                                .value_counts()
+                                .reset_index()
+                            )
+                            item_counts.columns = ["movie_idx", "count"]
+
                             # Convert to list of (item_id, count) tuples and sort by count in descending order
-                            popularity_list = list(zip(item_counts['movie_idx'], item_counts['count']))
+                            popularity_list = list(
+                                zip(item_counts["movie_idx"], item_counts["count"])
+                            )
                             popularity_list.sort(key=lambda x: x[1], reverse=True)
-                            
+
                             self.item_popularity = popularity_list
-                            print(f"Calculated popularity for {len(popularity_list)} items")
+                            print(
+                                f"Calculated popularity for {len(popularity_list)} items"
+                            )
                             return
-            
+
             # If we get here, try with movie_idx column if it exists
-            if 'movie_idx' in ratings_df.columns:
+            if "movie_idx" in ratings_df.columns:
                 # Count occurrences of each movie
-                item_counts = ratings_df['movie_idx'].value_counts().reset_index()
-                item_counts.columns = ['movie_idx', 'count']
-                
+                item_counts = ratings_df["movie_idx"].value_counts().reset_index()
+                item_counts.columns = ["movie_idx", "count"]
+
                 # Convert to list of (item_id, count) tuples and sort by count in descending order
-                popularity_list = list(zip(item_counts['movie_idx'], item_counts['count']))
+                popularity_list = list(
+                    zip(item_counts["movie_idx"], item_counts["count"])
+                )
                 popularity_list.sort(key=lambda x: x[1], reverse=True)
-                
+
                 self.item_popularity = popularity_list
                 print(f"Calculated popularity for {len(popularity_list)} items")
             else:
-                print("Warning: Unable to calculate item popularity, 'movie_idx' column not found")
+                print(
+                    "Warning: Unable to calculate item popularity, 'movie_idx' column not found"
+                )
 
     def train(
         self,
@@ -592,7 +632,7 @@ class MovieLensRecommendationSystem:
         movie_ids,
         labels,
         batch_size=2048,  # Increased batch size
-        epochs=10,        # Increased epochs
+        epochs=10,  # Increased epochs
         validation_data=None,
     ):
         """
@@ -603,7 +643,7 @@ class MovieLensRecommendationSystem:
 
         # Learning rate scheduler
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode='min', factor=0.5, patience=1, verbose=True
+            self.optimizer, mode="min", factor=0.5, patience=1, verbose=True
         )
 
         # For tracking metrics
@@ -618,7 +658,7 @@ class MovieLensRecommendationSystem:
 
             print(f"Epoch {epoch+1}/{epochs} - Training...")
             progress_bar = tqdm(data_loader, desc=f"Epoch {epoch+1}/{epochs}")
-            
+
             for user_batch, movie_batch, label_batch in progress_bar:
                 self.optimizer.zero_grad()
 
@@ -636,10 +676,10 @@ class MovieLensRecommendationSystem:
 
                 # Backward pass and optimize
                 loss.backward()
-                
+
                 # Gradient clipping to prevent exploding gradients
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-                
+
                 self.optimizer.step()
 
                 total_loss += loss.item() * len(user_batch)
@@ -675,7 +715,7 @@ class MovieLensRecommendationSystem:
                     patience_counter = 0
                 else:
                     patience_counter += 1
-                    
+
                 # Early stopping
                 if patience_counter >= max_patience:
                     print(f"Early stopping after {epoch+1} epochs")
@@ -790,7 +830,12 @@ class MovieLensRecommendationSystem:
                 if not movie_info.empty:
                     title = movie_info["title"].values[0]
                     recommendations.append(
-                        {"internal_id": item, "movieId": original_id, "title": title, "score": float(predictions[item])}
+                        {
+                            "internal_id": item,
+                            "movieId": original_id,
+                            "title": title,
+                            "score": float(predictions[item]),
+                        }
                     )
                 else:
                     recommendations.append(
@@ -798,11 +843,14 @@ class MovieLensRecommendationSystem:
                             "internal_id": item,
                             "movieId": original_id,
                             "title": f"Unknown Movie {original_id}",
-                            "score": float(predictions[item])
+                            "score": float(predictions[item]),
                         }
                     )
         else:
-            recommendations = [{"internal_id": item, "score": float(predictions[item])} for item in top_items]
+            recommendations = [
+                {"internal_id": item, "score": float(predictions[item])}
+                for item in top_items
+            ]
 
         end_time = time.time()
         print(f"Standard recommendation time: {end_time - start_time:.4f} seconds")
@@ -850,7 +898,9 @@ class MovieLensRecommendationSystem:
         """
         Recommend top-k items for a user using ANN for fast retrieval with much higher recall
         """
-        print(f"Generating recommendations for user {user_id} using improved ANN method...")
+        print(
+            f"Generating recommendations for user {user_id} using improved ANN method..."
+        )
         start_time = time.time()
 
         # Build index if not already built
@@ -881,11 +931,13 @@ class MovieLensRecommendationSystem:
         # Optionally get more diverse candidates
         if self.num_items > 5000:  # If we have a substantial item catalog
             # Also include some most popular items from the catalog
-            if hasattr(self, 'item_popularity') and self.item_popularity is not None:
-                popular_items = [item for item, _ in self.item_popularity[:100] 
-                                if item not in candidate_items]
+            if hasattr(self, "item_popularity") and self.item_popularity is not None:
+                popular_items = [
+                    item
+                    for item, _ in self.item_popularity[:100]
+                    if item not in candidate_items
+                ]
                 candidate_items.extend(popular_items[:50])  # Add up to 50 popular items
-
 
         # Filter out already seen items
         if exclude_seen and seen_movie_ids is not None:
@@ -936,10 +988,10 @@ class MovieLensRecommendationSystem:
                     title = movie_info["title"].values[0]
                     recommendations.append(
                         {
-                            "internal_id": item, 
-                            "movieId": original_id, 
+                            "internal_id": item,
+                            "movieId": original_id,
                             "title": title,
-                            "score": float(top_scores[i])
+                            "score": float(top_scores[i]),
                         }
                     )
                 else:
@@ -948,12 +1000,14 @@ class MovieLensRecommendationSystem:
                             "internal_id": item,
                             "movieId": original_id,
                             "title": f"Unknown Movie {original_id}",
-                            "score": float(top_scores[i])
+                            "score": float(top_scores[i]),
                         }
                     )
         else:
-            recommendations = [{"internal_id": item, "score": float(score)} 
-                               for item, score in zip(top_items, top_scores)]
+            recommendations = [
+                {"internal_id": item, "score": float(score)}
+                for item, score in zip(top_items, top_scores)
+            ]
 
         end_time = time.time()
         print(f"ANN recommendation time: {end_time - start_time:.4f} seconds")
@@ -985,66 +1039,69 @@ def get_user_seen_movies(
 
 # ========================= Leave-One-Out Evaluation ===========================
 
-def create_leave_one_out_testset(cold_start_test, user_id_map, movie_id_map, rating_threshold=3.0):
+
+def create_leave_one_out_testset(
+    cold_start_test, user_id_map, movie_id_map, rating_threshold=3.0
+):
     """
     Create a leave-one-out test set for evaluation, ensuring each user has at least one test item.
     For each user, hold out their highest-rated item for evaluation.
-    
+
     Args:
         cold_start_test: Cold-start test data
         user_id_map: Mapping from original to internal user IDs
         movie_id_map: Mapping from original to internal movie IDs
         rating_threshold: Threshold to consider a rating as positive (lowered for better hit rate)
-        
+
     Returns:
         Dictionary with test items for each user
     """
     print("Creating leave-one-out test set...")
-    
+
     test_items = {}
     users_processed = 0
-    
+
     # Group by user
-    for user_id, group in cold_start_test.groupby('userId'):
+    for user_id, group in cold_start_test.groupby("userId"):
         if user_id not in user_id_map:
             continue
-            
+
         # Get the user's internal ID
         internal_user_id = user_id_map[user_id]
-        
+
         # Filter for positive ratings (REDUCED threshold to increase chances of hits)
-        positive_ratings = group[group['rating'] >= rating_threshold]
-        
+        positive_ratings = group[group["rating"] >= rating_threshold]
+
         if len(positive_ratings) == 0:
             continue
-            
+
         # Get the highest-rated item
-        best_item = positive_ratings.sort_values('rating', ascending=False).iloc[0]
-        movie_id = best_item['movieId']
-        
+        best_item = positive_ratings.sort_values("rating", ascending=False).iloc[0]
+        movie_id = best_item["movieId"]
+
         if movie_id in movie_id_map:
             internal_movie_id = movie_id_map[movie_id]
             test_items[internal_user_id] = internal_movie_id
             users_processed += 1
-    
+
     print(f"Created leave-one-out test set for {users_processed} users")
-    
+
     return test_items
 
 
 def evaluate_leave_one_out(
-    rec_system, 
-    test_items, 
-    movies_df, 
-    user_id_map, 
-    movie_id_map, 
+    rec_system,
+    test_items,
+    movies_df,
+    user_id_map,
+    movie_id_map,
     top_k=50,  # Dramatically increased to improve hit rate
     use_ann=False,
-    max_users=None  # New parameter to limit number of evaluated users
+    max_users=None,  # New parameter to limit number of evaluated users
 ):
     """
     Evaluate using leave-one-out methodology (simpler and more reliable for cold-start scenarios).
-    
+
     Args:
         rec_system: Recommendation system
         test_items: Dictionary mapping user IDs to their test item
@@ -1054,21 +1111,25 @@ def evaluate_leave_one_out(
         top_k: Number of recommendations to consider (dramatically increased)
         use_ann: Whether to use ANN for recommendations
         max_users: Maximum number of users to evaluate (None = all users)
-        
+
     Returns:
         Dictionary with evaluation metrics
     """
-    print(f"Evaluating {'ANN' if use_ann else 'standard'} recommendations using leave-one-out...")
-    
+    print(
+        f"Evaluating {'ANN' if use_ann else 'standard'} recommendations using leave-one-out..."
+    )
+
     # If max_users is specified, select a random subset of users
     if max_users is not None and max_users < len(test_items):
         np.random.seed(42)  # For reproducibility
         user_ids = list(test_items.keys())
         selected_users = np.random.choice(user_ids, size=max_users, replace=False)
         test_items_subset = {user_id: test_items[user_id] for user_id in selected_users}
-        print(f"Randomly selected {max_users} users from {len(test_items)} total test users")
+        print(
+            f"Randomly selected {max_users} users from {len(test_items)} total test users"
+        )
         test_items = test_items_subset
-    
+
     # Metrics to track
     metrics = {
         "hit_rate": [],
@@ -1076,91 +1137,93 @@ def evaluate_leave_one_out(
         "ndcg": [],
         "time": [],
     }
-    
+
     # Process users with test items
     users_evaluated = 0
-    
+
     for internal_user_id, test_item_id in test_items.items():
         # Get original user ID (for debugging only)
         original_user_id = rec_system.reverse_user_map[internal_user_id]
-        
+
         # Get training data to exclude from recommendations
         train_df = rec_system.ratings_df
         seen_movies = get_user_seen_movies(
-            train_df, 
-            original_user_id, 
-            user_id_map, 
-            movie_id_map, 
-            rating_threshold=2.0  # Lower threshold to exclude more items
+            train_df,
+            original_user_id,
+            user_id_map,
+            movie_id_map,
+            rating_threshold=2.0,  # Lower threshold to exclude more items
         )
-        
+
         # Generate recommendations
         start_time = time.time()
         if use_ann:
             recommendations = rec_system.recommend_items_ann(
-                internal_user_id, 
-                top_k=top_k, 
-                exclude_seen=True, 
+                internal_user_id,
+                top_k=top_k,
+                exclude_seen=True,
                 seen_movie_ids=seen_movies,
-                candidate_multiplier=50  # Increase candidates for better recall
+                candidate_multiplier=50,  # Increase candidates for better recall
             )
         else:
             recommendations = rec_system.recommend_items(
-                internal_user_id, 
-                top_k=top_k, 
-                exclude_seen=True, 
-                seen_movie_ids=seen_movies
+                internal_user_id,
+                top_k=top_k,
+                exclude_seen=True,
+                seen_movie_ids=seen_movies,
             )
         end_time = time.time()
-        
+
         # Extract recommended item IDs
         rec_items = [rec["internal_id"] for rec in recommendations]
-        
+
         # 1. Hit Rate - is the test item in the recommendations?
         hit = 1 if test_item_id in rec_items else 0
         metrics["hit_rate"].append(hit)
-        
+
         # 2. Reciprocal Rank - 1/position of the test item
         if test_item_id in rec_items:
             rank = rec_items.index(test_item_id) + 1  # 1-based position
             metrics["reciprocal_rank"].append(1.0 / rank)
         else:
             metrics["reciprocal_rank"].append(0.0)  # Not found
-            
+
         # 3. NDCG - normalized discounted cumulative gain
         # For leave-one-out, this is simplified since there's only one relevant item
         relevance = np.zeros(len(rec_items))
         if test_item_id in rec_items:
             relevance[rec_items.index(test_item_id)] = 1
-            
+
         # Calculate DCG (Discounted Cumulative Gain)
         dcg = 0
         for i, rel in enumerate(relevance):
             if rel > 0:
                 dcg += rel / np.log2(i + 2)  # +2 because i is 0-indexed
-                
+
         # IDCG is 1 (since there's only one relevant item)
         idcg = 1.0  # Optimal DCG is placing the relevant item at position 1
         ndcg = dcg / idcg if idcg > 0 else 0.0
         metrics["ndcg"].append(ndcg)
-        
+
         # Record time
         metrics["time"].append(end_time - start_time)
-        
+
         users_evaluated += 1
         if users_evaluated % 20 == 0:
             print(f"Processed {users_evaluated} users")
-            
+
         # Debug for the first few users
         if users_evaluated <= 3:
             print(f"\nUser {original_user_id} (internal ID: {internal_user_id}):")
             if hit:
                 test_item_pos = rec_items.index(test_item_id) + 1
-                print(f"  Test item found at position {test_item_pos} out of {len(rec_items)}")
+                print(
+                    f"  Test item found at position {test_item_pos} out of {len(rec_items)}"
+                )
             else:
                 print(f"  Test item NOT found in recommendations")
             print(f"  Time: {end_time - start_time:.4f}s")
-    
+
     # Calculate average metrics
     if users_evaluated > 0:
         avg_metrics = {
@@ -1168,7 +1231,7 @@ def evaluate_leave_one_out(
             "mrr": np.mean(metrics["reciprocal_rank"]),  # Mean Reciprocal Rank
             "ndcg": np.mean(metrics["ndcg"]),
             "time": np.mean(metrics["time"]),
-            "users_evaluated": users_evaluated
+            "users_evaluated": users_evaluated,
         }
     else:
         avg_metrics = {
@@ -1176,19 +1239,25 @@ def evaluate_leave_one_out(
             "mrr": 0.0,
             "ndcg": 0.0,
             "time": 0.0,
-            "users_evaluated": 0
+            "users_evaluated": 0,
         }
         print("Warning: No users were evaluated!")
-    
+
     return avg_metrics
 
 
 def compare_coldstart_methods_leave_one_out(
-    rec_system, test_items, movies_df, user_id_map, movie_id_map, top_k=50, max_users=None  # Increased top_k
+    rec_system,
+    test_items,
+    movies_df,
+    user_id_map,
+    movie_id_map,
+    top_k=50,
+    max_users=None,  # Increased top_k
 ):
     """
     Compare recommendation methods using leave-one-out evaluation.
-    
+
     Args:
         rec_system: Recommendation system
         test_items: Dictionary mapping users to their test items
@@ -1197,7 +1266,7 @@ def compare_coldstart_methods_leave_one_out(
         movie_id_map: Mapping from original to internal movie IDs
         top_k: Number of recommendations to consider (increased to 50)
         max_users: Maximum number of users to evaluate (None = all users)
-        
+
     Returns:
         Dictionary with comparison results
     """
@@ -1205,97 +1274,123 @@ def compare_coldstart_methods_leave_one_out(
     if not test_items:
         print("Error: No test items available for evaluation!")
         return None
-    
-    print(f"Comparing methods using leave-one-out with up to {max_users if max_users else len(test_items)} users...")
-    
+
+    print(
+        f"Comparing methods using leave-one-out with up to {max_users if max_users else len(test_items)} users..."
+    )
+
     # Evaluate standard method
     standard_metrics = evaluate_leave_one_out(
-        rec_system, test_items, movies_df, user_id_map, movie_id_map, 
-        top_k=top_k, use_ann=False, max_users=max_users
+        rec_system,
+        test_items,
+        movies_df,
+        user_id_map,
+        movie_id_map,
+        top_k=top_k,
+        use_ann=False,
+        max_users=max_users,
     )
-    
+
     # Evaluate ANN method
     ann_metrics = evaluate_leave_one_out(
-        rec_system, test_items, movies_df, user_id_map, movie_id_map, 
-        top_k=top_k, use_ann=True, max_users=max_users
+        rec_system,
+        test_items,
+        movies_df,
+        user_id_map,
+        movie_id_map,
+        top_k=top_k,
+        use_ann=True,
+        max_users=max_users,
     )
-    
+
     # Print results
     print("\n===== Cold-start User Performance Comparison =====")
-    print(f"Standard method - Hit Rate: {standard_metrics['hit_rate']:.2f}%, MRR: {standard_metrics['mrr']:.4f}, "
-          f"NDCG: {standard_metrics['ndcg']:.4f}, Time: {standard_metrics['time']:.4f}s")
-    print(f"ANN method      - Hit Rate: {ann_metrics['hit_rate']:.2f}%, MRR: {ann_metrics['mrr']:.4f}, "
-          f"NDCG: {ann_metrics['ndcg']:.4f}, Time: {ann_metrics['time']:.4f}s")
-    
-    speedup = standard_metrics['time'] / ann_metrics['time'] if ann_metrics['time'] > 0 else 0
+    print(
+        f"Standard method - Hit Rate: {standard_metrics['hit_rate']:.2f}%, MRR: {standard_metrics['mrr']:.4f}, "
+        f"NDCG: {standard_metrics['ndcg']:.4f}, Time: {standard_metrics['time']:.4f}s"
+    )
+    print(
+        f"ANN method      - Hit Rate: {ann_metrics['hit_rate']:.2f}%, MRR: {ann_metrics['mrr']:.4f}, "
+        f"NDCG: {ann_metrics['ndcg']:.4f}, Time: {ann_metrics['time']:.4f}s"
+    )
+
+    speedup = (
+        standard_metrics["time"] / ann_metrics["time"] if ann_metrics["time"] > 0 else 0
+    )
     print(f"\nSpeedup: {speedup:.2f}x faster")
-    
+
     # Calculate relative differences for metrics where both methods have non-zero values
-    if standard_metrics['hit_rate'] > 0 and ann_metrics['hit_rate'] > 0:
-        hit_rate_diff = (ann_metrics['hit_rate'] / standard_metrics['hit_rate'] - 1) * 100
+    if standard_metrics["hit_rate"] > 0 and ann_metrics["hit_rate"] > 0:
+        hit_rate_diff = (
+            ann_metrics["hit_rate"] / standard_metrics["hit_rate"] - 1
+        ) * 100
         print(f"Hit Rate diff: {hit_rate_diff:.2f}%")
-    
-    if standard_metrics['mrr'] > 0 and ann_metrics['mrr'] > 0:
-        mrr_diff = (ann_metrics['mrr'] / standard_metrics['mrr'] - 1) * 100
+
+    if standard_metrics["mrr"] > 0 and ann_metrics["mrr"] > 0:
+        mrr_diff = (ann_metrics["mrr"] / standard_metrics["mrr"] - 1) * 100
         print(f"MRR diff: {mrr_diff:.2f}%")
-    
-    if standard_metrics['ndcg'] > 0 and ann_metrics['ndcg'] > 0:
-        ndcg_diff = (ann_metrics['ndcg'] / standard_metrics['ndcg'] - 1) * 100
+
+    if standard_metrics["ndcg"] > 0 and ann_metrics["ndcg"] > 0:
+        ndcg_diff = (ann_metrics["ndcg"] / standard_metrics["ndcg"] - 1) * 100
         print(f"NDCG diff: {ndcg_diff:.2f}%")
-    
+
     # Generate visualization
-    metrics_names = ['Hit Rate (%)', 'MRR x100', 'NDCG x100']
+    metrics_names = ["Hit Rate (%)", "MRR x100", "NDCG x100"]
     std_values = [
-        standard_metrics['hit_rate'], 
-        standard_metrics['mrr'] * 100,  # Scale up for visibility
-        standard_metrics['ndcg'] * 100   # Scale up for visibility
+        standard_metrics["hit_rate"],
+        standard_metrics["mrr"] * 100,  # Scale up for visibility
+        standard_metrics["ndcg"] * 100,  # Scale up for visibility
     ]
     ann_values = [
-        ann_metrics['hit_rate'], 
-        ann_metrics['mrr'] * 100, 
-        ann_metrics['ndcg'] * 100
+        ann_metrics["hit_rate"],
+        ann_metrics["mrr"] * 100,
+        ann_metrics["ndcg"] * 100,
     ]
-    
+
     plt.figure(figsize=(12, 6))
     x = np.arange(len(metrics_names))
     width = 0.35
-    
-    plt.bar(x - width/2, std_values, width, label='Standard')
-    plt.bar(x + width/2, ann_values, width, label='ANN')
-    
-    plt.ylabel('Score')
-    plt.title('Cold-start User Recommendation Accuracy Comparison')
+
+    plt.bar(x - width / 2, std_values, width, label="Standard")
+    plt.bar(x + width / 2, ann_values, width, label="ANN")
+
+    plt.ylabel("Score")
+    plt.title("Cold-start User Recommendation Accuracy Comparison")
     plt.xticks(x, metrics_names)
     plt.legend()
-    
+
     # Add value labels
     for i, v in enumerate(std_values):
-        plt.text(i - width/2, v + 0.5, f'{v:.2f}', ha='center')
+        plt.text(i - width / 2, v + 0.5, f"{v:.2f}", ha="center")
     for i, v in enumerate(ann_values):
-        plt.text(i + width/2, v + 0.5, f'{v:.2f}', ha='center')
-    
+        plt.text(i + width / 2, v + 0.5, f"{v:.2f}", ha="center")
+
     plt.savefig("coldstart_accuracy_comparison.png")
-    print("Cold-start accuracy comparison chart saved to coldstart_accuracy_comparison.png")
-    
+    print(
+        "Cold-start accuracy comparison chart saved to coldstart_accuracy_comparison.png"
+    )
+
     # Speed comparison
     plt.figure(figsize=(8, 6))
-    plt.bar(['Standard', 'ANN'], [standard_metrics['time'], ann_metrics['time']])
-    plt.ylabel('Average Time (seconds)')
-    plt.title('Cold-start Recommendation Speed Comparison')
-    
+    plt.bar(["Standard", "ANN"], [standard_metrics["time"], ann_metrics["time"]])
+    plt.ylabel("Average Time (seconds)")
+    plt.title("Cold-start Recommendation Speed Comparison")
+
     # Add value labels
-    plt.text(0, standard_metrics['time'] + 0.01, f"{standard_metrics['time']:.3f}s", ha='center')
-    plt.text(1, ann_metrics['time'] + 0.01, f"{ann_metrics['time']:.3f}s", ha='center')
-    
+    plt.text(
+        0,
+        standard_metrics["time"] + 0.01,
+        f"{standard_metrics['time']:.3f}s",
+        ha="center",
+    )
+    plt.text(1, ann_metrics["time"] + 0.01, f"{ann_metrics['time']:.3f}s", ha="center")
+
     plt.savefig("coldstart_speed_comparison.png")
     print("Cold-start speed comparison chart saved to coldstart_speed_comparison.png")
-    
-    plt.close('all')
-    
-    return {
-        'standard': standard_metrics,
-        'ann': ann_metrics
-    }
+
+    plt.close("all")
+
+    return {"standard": standard_metrics, "ann": ann_metrics}
 
 
 # ========================= Model Saving/Loading with Mappings ===========================
@@ -1349,16 +1444,16 @@ def load_model_with_mappings(filepath="model_with_mappings.pt"):
         print("Attempting to load with manual serialization handling...")
         try:
             # Try more permissive loading
-            saved_data = torch.load(filepath, map_location=torch.device('cpu'))
+            saved_data = torch.load(filepath, map_location=torch.device("cpu"))
         except:
             raise RuntimeError(f"Failed to load model from {filepath}")
 
     # Create model with correct dimensions and improved architecture
     model = DeepFM(
-        field_dims=saved_data["field_dims"], 
+        field_dims=saved_data["field_dims"],
         embedding_dim=saved_data["embedding_dim"],
         mlp_dims=(128, 64, 32),  # Wider network
-        dropout=0.3  # Increased dropout
+        dropout=0.3,  # Increased dropout
     )
 
     # Load state dict
@@ -1377,10 +1472,13 @@ def load_model_with_mappings(filepath="model_with_mappings.pt"):
 
 # ========================= Run Cold-start Evaluation ===========================
 
-def run_improved_coldstart_evaluation(data_dir, sample_size=None, num_test_users=100, test_ratio=0.2):
+
+def run_improved_coldstart_evaluation(
+    data_dir, sample_size=None, num_test_users=100, test_ratio=0.2
+):
     """
     Run the improved cold-start evaluation workflow using leave-one-out methodology
-    
+
     Args:
         data_dir: Directory containing MovieLens dataset
         sample_size: Number of ratings to sample (None for all)
@@ -1388,48 +1486,46 @@ def run_improved_coldstart_evaluation(data_dir, sample_size=None, num_test_users
         test_ratio: Ratio of data to use for testing (0.2 = 80/20 split)
     """
     print("Starting improved cold-start evaluation...")
-    
+
     # Load raw data
     ratings_df, movies_df = load_movielens_data(data_dir, sample_size)
-    
+
     # Prepare cold-start evaluation data with optimized parameters
     coldstart_data = prepare_coldstart_evaluation(
-        ratings_df, 
-        coldstart_ratio=0.2,        # Reduced to focus on higher quality cold-start users
-        initial_ratings=5,          # Increased for better initial profile
-        rating_threshold=3.5,       # Higher threshold for more reliable positive items
-        test_ratio=test_ratio       # Using specified test ratio (default 0.2)
+        ratings_df,
+        coldstart_ratio=0.2,  # Reduced to focus on higher quality cold-start users
+        initial_ratings=5,  # Increased for better initial profile
+        rating_threshold=3.5,  # Higher threshold for more reliable positive items
+        test_ratio=test_ratio,  # Using specified test ratio (default 0.2)
     )
-    
+
     # Process training data
-    data = preprocess_for_recommendation(coldstart_data['train_data'])
-    
+    data = preprocess_for_recommendation(coldstart_data["train_data"])
+
     # Create leave-one-out test set with lower threshold to get more test items
     test_items = create_leave_one_out_testset(
-        coldstart_data['cold_start_test'], 
-        data["user_id_map"], 
+        coldstart_data["cold_start_test"],
+        data["user_id_map"],
         data["movie_id_map"],
-        rating_threshold=3.0  # Lowered from 3.5 to include more test items
+        rating_threshold=3.0,  # Lowered from 3.5 to include more test items
     )
-    
+
     # Process test data (still needed for the model)
     test_data = preprocess_test_data(
-        coldstart_data['cold_start_test'], 
-        data["user_id_map"], 
-        data["movie_id_map"]
+        coldstart_data["cold_start_test"], data["user_id_map"], data["movie_id_map"]
     )
-    
+
     print("Creating recommendation system...")
     rec_system = MovieLensRecommendationSystem(
-        data["num_users"], 
+        data["num_users"],
         data["num_items"],
-        embedding_dim=32  # Increased embedding dimension
+        embedding_dim=32,  # Increased embedding dimension
     )
     rec_system.set_mapping(
-        data["reverse_user_map"], 
-        data["reverse_movie_map"], 
+        data["reverse_user_map"],
+        data["reverse_movie_map"],
         movies_df,
-        data["ratings_df"]
+        data["ratings_df"],
     )
 
     # Check if we have a saved model
@@ -1450,10 +1546,7 @@ def run_improved_coldstart_evaluation(data_dir, sample_size=None, num_test_users
                 rec_system.model = model
                 # Make sure to keep the ratings_df when updating the mapping
                 rec_system.set_mapping(
-                    reverse_user_map, 
-                    reverse_movie_map, 
-                    movies_df,
-                    data["ratings_df"]
+                    reverse_user_map, reverse_movie_map, movies_df, data["ratings_df"]
                 )
             else:
                 raise ValueError("Model dimensions don't match dataset")
@@ -1466,12 +1559,12 @@ def run_improved_coldstart_evaluation(data_dir, sample_size=None, num_test_users
                 data["movie_ids"],
                 data["labels"],
                 batch_size=2048,  # Increased batch size
-                epochs=10,        # Increased epochs
+                epochs=10,  # Increased epochs
                 validation_data={  # Add validation data for early stopping
                     "user_ids": test_data["user_ids"][:5000],
                     "movie_ids": test_data["movie_ids"][:5000],
-                    "labels": test_data["labels"][:5000]
-                }
+                    "labels": test_data["labels"][:5000],
+                },
             )
             save_model_with_mappings(
                 rec_system.model,
@@ -1486,13 +1579,25 @@ def run_improved_coldstart_evaluation(data_dir, sample_size=None, num_test_users
             data["user_ids"],
             data["movie_ids"],
             data["labels"],
-            batch_size=2048,     # Increased batch size
-            epochs=10,           # Increased epochs
-            validation_data={    # Add validation data for early stopping
-                "user_ids": test_data["user_ids"][:5000] if len(test_data["user_ids"]) > 5000 else test_data["user_ids"],
-                "movie_ids": test_data["movie_ids"][:5000] if len(test_data["movie_ids"]) > 5000 else test_data["movie_ids"],
-                "labels": test_data["labels"][:5000] if len(test_data["labels"]) > 5000 else test_data["labels"]
-            }
+            batch_size=2048,  # Increased batch size
+            epochs=10,  # Increased epochs
+            validation_data={  # Add validation data for early stopping
+                "user_ids": (
+                    test_data["user_ids"][:5000]
+                    if len(test_data["user_ids"]) > 5000
+                    else test_data["user_ids"]
+                ),
+                "movie_ids": (
+                    test_data["movie_ids"][:5000]
+                    if len(test_data["movie_ids"]) > 5000
+                    else test_data["movie_ids"]
+                ),
+                "labels": (
+                    test_data["labels"][:5000]
+                    if len(test_data["labels"]) > 5000
+                    else test_data["labels"]
+                ),
+            },
         )
         save_model_with_mappings(
             rec_system.model,
@@ -1506,22 +1611,26 @@ def run_improved_coldstart_evaluation(data_dir, sample_size=None, num_test_users
     rec_system.build_ann_index()
 
     # Compare recommendation methods using improved methodology with limited users
-    print(f"\nComparing recommendation methods for {num_test_users} cold-start users...")
+    print(
+        f"\nComparing recommendation methods for {num_test_users} cold-start users..."
+    )
     comparison_results = compare_coldstart_methods_leave_one_out(
         rec_system,
         test_items,
         movies_df,
         data["user_id_map"],
         data["movie_id_map"],
-        top_k=50,            # Dramatically increased top_k for better hit rate
-        max_users=num_test_users  # Limit to specified number of test users
+        top_k=50,  # Dramatically increased top_k for better hit rate
+        max_users=num_test_users,  # Limit to specified number of test users
     )
 
     return comparison_results
 
 
 # In the main function, modify to use the improved evaluation
-def main(data_dir, sample_size=None, mode="standard", force_retrain=False, test_ratio=0.2):
+def main(
+    data_dir, sample_size=None, mode="standard", force_retrain=False, test_ratio=0.2
+):
     """
     Main function to run the MovieLens recommendation system
 
@@ -1536,8 +1645,12 @@ def main(data_dir, sample_size=None, mode="standard", force_retrain=False, test_
         # Standard workflow (unchanged)
         pass
     elif mode == "coldstart":
-        print(f"Running improved cold-start evaluation with {test_ratio*100}% test data...")
-        results = run_improved_coldstart_evaluation(data_dir, sample_size, num_test_users=100, test_ratio=test_ratio)
+        print(
+            f"Running improved cold-start evaluation with {test_ratio*100}% test data..."
+        )
+        results = run_improved_coldstart_evaluation(
+            data_dir, sample_size, num_test_users=100, test_ratio=test_ratio
+        )
         return results
     else:
         print(f"Unknown mode: {mode}. Please use 'standard' or 'coldstart'.")
@@ -1548,7 +1661,7 @@ if __name__ == "__main__":
     data_dir = "./ml-32m"  # Path to the MovieLens dataset
 
     print(f"Running evaluation using data from {data_dir}")
-    
-    # Run cold-start evaluation with the full dataset, 
+
+    # Run cold-start evaluation with the full dataset,
     # 20% test split, and testing on only 100 users
     results = main(data_dir, sample_size=None, mode="coldstart", test_ratio=0.2)
