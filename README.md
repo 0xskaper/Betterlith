@@ -1,4 +1,4 @@
-# DeepFM-ANN Recommendation System for MovieLens
+# DeepFM-ANN Recommendation System
 
 This repository contains an optimized recommendation system for the MovieLens dataset, with a specific focus on cold-start user scenarios using a hybrid approach combining DeepFM and Approximate Nearest Neighbors (ANN).
 
